@@ -410,16 +410,9 @@ Several gems were incompatible with Rails 5 beta and needed to be commented out:
 
 **Gems added:**
 - `rails-controller-testing` (extracted `assigns`/`assert_template`)
-- `sqlite3` (development database)
-- `redcarpet` (Markdown rendering)
-- `file-tail` (log monitoring)
 
 **Gems updated:**
 - `active_model_serializers` 0.8.1 → 0.10.1
-- `factory_girl` 4.5.0 → 4.7.0
-- `rest-client` 1.8.0 → 2.0.0
-- `handlebars_assets` switched to GitHub source (compatibility fix)
-- `beaneater` pinned to `~> 0.3`
 
 **Lesson**: Start the upgrade by commenting out non-essential gems to get Rails booting. Re-enable them one at a time after the core upgrade works. One production app's first commit was literally "Disable some stuff to get rails 5 running."
 
@@ -447,10 +440,6 @@ Several gems were incompatible with Rails 5 beta and needed to be commented out:
 - **Catch-all routes served implicit endpoints**: If your app relied on the `":controller(/:action(/:id))"` catch-all pattern, you won't get routing errors during development — those routes simply won't exist. Audit traffic logs for 404s after deployment
 
 - **AMS 0.10 is a full rewrite**: The jump from AMS 0.8/0.9 to 0.10 changes the entire serialization API, not just `ArraySerializer` → `CollectionSerializer`. If you use custom serializers extensively, consider pinning AMS to 0.9.x during the upgrade
-
-- **MySQL → PostgreSQL simultaneously**: One production app combined the Rails 5 upgrade with a database migration. This is **not recommended** — it made debugging extremely difficult and the branch accumulated 234 commits over 8 months. Keep major infrastructure changes separate
-
-- **Beta tracking risk**: Starting with beta1 meant 8 months of branch maintenance. Starting at RC or GA reduces the upgrade window significantly. One production app's `rails5` branch needed 5+ merges from master to stay current
 
 - **`head` syntax change**: The old-style `head :status => :not_found` doesn't work in Rails 5. Use `head(:not_found)` or `head :not_found` instead
 

@@ -39,18 +39,6 @@ grep -rn "add_foreign_key\|remove_foreign_key" db/migrate/
 grep "web-console" Gemfile
 ```
 
-### Config for serve_static_assets
-```bash
-# Deprecated in Rails 5.0, but introduced in 4.2 era
-grep "serve_static_assets\|serve_static_files" config/environments/
-```
-
-### Deprecated finder methods
-```bash
-# find_by_* dynamic finders deprecated (removed in 5.x)
-grep -rn "find_by_[a-z_]\+(" app/models/ app/controllers/ | grep -v "find_by(" | head -20
-```
-
 ## The Upgrade Timeline (Real-World)
 
 One production app completed the Rails 4.1 → 4.2 upgrade in approximately **one day** (December 22, 2014), making it one of the smoothest Rails upgrades. The app stayed on Rails 4.2.x for **12 months** (Dec 2014 – Dec 2015) before upgrading to Rails 5.0.
@@ -271,18 +259,6 @@ Between Rails 4.2.0 (Dec 22, 2014) and Rails 5.0 (Dec 30, 2015), one production 
 Each point release was a **Gemfile-only change** (2 lines: `gem 'rails'` version bump, Gemfile.lock regeneration). No code or config changes were needed.
 
 **Lesson**: Rails 4.2.x had excellent stability. One production app accumulated **512 commits** of feature work between 4.2.0 and 4.2.3 with no Rails-related issues.
-
-## Interleaved Work (The Hidden Complexity)
-
-The git history shows the Rails 4.2 upgrade was done on a `pg` branch that also handled a **MySQL → PostgreSQL database migration**. Between the last Rails 4.1 commit (Oct 3, 2014) and the Rails 4.2 commit (Dec 22, 2014), there were multiple merges between `master` and the `pg` branch:
-
-- `accb212d6` (Nov 19, 2014): "Merge branch 'master' into pg"
-- `a1ae66133` (Dec 22, 2014): "Merge branch 'master' into pg"
-- Then Rails 4.2 upgrade commit (same day)
-
-This suggests the Rails 4.2 upgrade was **piggybacked onto an active database migration branch**, which is **not recommended**. However, in this case it worked because Rails 4.2 required minimal changes.
-
-**Lesson**: Rails 4.2 was simple enough that it could be combined with other infrastructure work without causing problems. This would **not** have worked for Rails 5.0 (which required 8 months of branch maintenance and extensive compatibility fixes).
 
 ## Subtle Gotchas
 

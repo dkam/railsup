@@ -17,12 +17,6 @@ grep -rn "render.*:text\s*=>\|render.*text:" app/views/ app/controllers/
 grep -rn "render.*nothing:" app/controllers/
 ```
 
-### Neat gem version (thor conflict)
-```bash
-# Neat 2.0 may be incompatible — need to pin to ~> 1.8
-grep -rn "neat" Gemfile Gemfile.lock | head -5
-```
-
 ### Sanitize gem vs Loofah conflict
 ```bash
 # Rails 5.1 bundles Loofah via rails-html-sanitizer — direct sanitize gem may conflict
@@ -137,31 +131,6 @@ grep -rn "Sanitize\.\|Sanitize::" app/ lib/
 
 **Lesson**: If you only use Sanitize for basic HTML stripping, switch to Loofah and remove the direct dependency. If you use Sanitize's advanced configuration, pin to a compatible version.
 
-## Neat CSS Framework Incompatibility
-
-Neat 2.0 was released around the same time as Rails 5.1 and was incompatible (likely a thor gem version conflict). Pin to 1.x:
-
-```ruby
-# Gemfile — pin neat to avoid 2.0
-gem 'neat', '~> 1.8'
-```
-
-This same `neat` gem would cause problems again during the 6.0 and 6.1 upgrades (thor version conflicts). Consider migrating away from Neat if you're planning multiple upgrades.
-
-## VCR Test Framework
-
-VCR may have compatibility issues with Rails 5.1's HTTP stack changes. One production app disabled VCR entirely during the upgrade:
-
-```ruby
-# test_helper.rb — commented out entire VCR block
-# VCR.configure do |c|
-#   c.allow_http_connections_when_no_cassette = true
-#   ...
-# end
-```
-
-**Lesson**: If you're not actively using VCR cassettes, disable it during the upgrade to eliminate one variable. Re-enable and update VCR after the Rails upgrade is stable.
-
 ## Rails 5.1 Configuration Changes
 
 ### Remarkably minimal for this upgrade
@@ -206,8 +175,6 @@ Despite the headline "jQuery removed from default stack," Rails 5.1 only removed
 **Lesson**: Rails 5.1's headline features were all optional and could be safely deferred. The upgrade is valuable purely for staying on a supported version and fixing deprecation warnings that become errors in later versions.
 
 ## Subtle Gotchas
-
-- **Same-day deploy risk**: One production app merged and deployed the 5.1 upgrade on the same day, resulting in 9 rapid-fire fix commits. Consider deploying to staging first and running your full test suite, even for "simple" upgrades
 
 - **`association(true)` in price scraping code**: This pattern is especially common in scraping/crawling code where you fetch prices and want to reload the association to see the new data. It won't raise an error — `association(true)` silently passes `true` as a scope argument, returning wrong results
 
