@@ -1,6 +1,6 @@
 # Upgrade 6.1 → 7.0: Lessons Learned
 
-This is one of the most complex Rails upgrades due to simultaneous changes in the JavaScript pipeline (Webpacker → Importmap), frontend framework (Turbolinks → Turbo/Stimulus), and Ruby 3.1 breaking changes (Psych 4.0, stdlib gem removal).
+This is one of the most complex Rails upgrades due to simultaneous changes in the JavaScript pipeline (Webpacker → Importmap) and frontend framework (Turbolinks → Turbo/Stimulus).
 
 ## Detection Commands
 
@@ -32,38 +32,6 @@ ls config/webpacker.yml babel.config.js postcss.config.js package.json yarn.lock
 grep -rn "javascript_pack_tag\|stylesheet_pack_tag" app/views/
 ```
 
-### YAML.load without permitted_classes (Ruby 3.1 / Psych 4.0)
-```bash
-# Find unsafe YAML.load calls
-grep -rn "YAML\.load\b" app/ lib/ | grep -v "permitted_classes\|safe_load\|YAML\.load_file"
-```
-
-### Ruby stdlib gems that need explicit inclusion
-```bash
-# Check if mail gem is used (needs net-smtp, net-pop, net-imap)
-grep -rn "ActionMailer\|deliver_later\|deliver_now" app/
-# Check for direct usage
-grep -rn "Net::SMTP\|Net::POP\|Net::IMAP" app/ lib/
-```
-
-### Kernel#open usage (security)
-```bash
-# Brakeman flags Kernel#open with URL strings
-grep -rn "[^I]open(" app/ lib/ | grep -v "File.open\|URI.open\|IO.open"
-```
-
-### SQL injection via string interpolation
-```bash
-# Find potential SQL injection in where clauses
-grep -rn '\.where(".*#{' app/models/ app/controllers/ app/services/
-```
-
-### Unsafe redirects
-```bash
-# Find redirect_to with model URLs (may need URI.parse wrapping)
-grep -rn "redirect_to.*\.url" app/controllers/
-```
-
 ### Cookie serializer
 ```bash
 # Check current cookie serializer setting
@@ -79,33 +47,15 @@ grep -rn "form_for\|form_tag" app/views/
 grep -rn "remote: true" app/views/
 ```
 
-### Faraday basic_auth deprecation
-```bash
-# Faraday 2.0 removed the instance method
-grep -rn "\.basic_auth(" app/ lib/
-```
-
-### Redis.current removal
-```bash
-# Redis.current was deprecated in redis-rb 4.6, removed in 5.0
-grep -rn "Redis\.current" app/ lib/ config/
-```
-
-### constantize on user input (security)
-```bash
-# Brakeman flags this as remote code execution risk
-grep -rn "\.constantize" app/controllers/
-```
-
 ## The Upgrade Timeline (Real-World)
 
 One production app took **4+ months of active work** (Dec 2021 - Apr 2022), with preparation starting in Aug 2021. Key phases:
 
-1. **Pre-upgrade preparation** (Aug-Sep 2021): Cookie serializer migration, Brakeman security fixes, updated to latest Rails 6.1 patch
+1. **Pre-upgrade preparation** (Aug-Sep 2021): Cookie serializer migration, updated to latest Rails 6.1 patch
 2. **First attempt** (Dec 2021): "Another shot at upgrading to rails 7 with import-maps" — the commit message explicitly reveals prior failed attempts
 3. **Core upgrade** (Jan 2022): Bumped to Rails 7.0.1, added framework defaults, importmap setup
 4. **Frontend migration** (Jan-Mar 2022): Stimulus controllers, jQuery removal, Turbo Stream integration
-5. **Production stabilization** (Mar 2022): Analytics fixes, ActionCable endpoint changes, Ruby 3.1 compatibility
+5. **Production stabilization** (Mar 2022): Analytics fixes, ActionCable endpoint changes
 6. **Parallel maintenance**: They kept Rails 6.1 updated on a separate branch (`rails7nohb`) as a production fallback throughout
 
 **Lesson**: This is not a weekend upgrade. Plan for months of parallel branch development with a production fallback on 6.1.
@@ -145,10 +95,10 @@ page_location: window.location.href
 <%= javascript_include_tag "application", 'data-turbo-track': 'reload' %>
 ```
 
-### Analytics Integration (GA / Matomo)
-Analytics break silently with Turbo because page navigations no longer trigger full page loads. Both Google Analytics and Matomo need custom `turbo:load` listeners.
+### Analytics Integration
+Analytics break silently with Turbo because page navigations no longer trigger full page loads. Analytics systems need custom `turbo:load` listeners.
 
-**Google Analytics:**
+**Example pattern:**
 ```javascript
 document.addEventListener('turbo:load', function(event) {
   if (typeof gtag === 'function') {
@@ -161,25 +111,7 @@ document.addEventListener('turbo:load', function(event) {
 });
 ```
 
-**Matomo:**
-```javascript
-(function() {
-  var previousPageUrl = null;
-  addEventListener('turbo:load', function(event) {
-    if (previousPageUrl) {
-      _paq.push(['setReferrerUrl', previousPageUrl]);
-      _paq.push(['setCustomUrl', window.location.href]);
-      _paq.push(['setDocumentTitle', document.title]);
-      _paq.push(['trackPageView']);
-    }
-    previousPageUrl = window.location.href;
-  });
-})();
-```
-
-Pattern: Skip tracking on the first load (let the default tracker handle it), then track subsequent Turbo navigations manually.
-
-**Gotcha**: If using Matomo, the endpoint URLs also changed from `piwik.php`/`piwik.js` to `matomo.php`/`matomo.js` around this time.
+**Pattern**: Skip tracking on the first load (let the default tracker handle it), then track subsequent Turbo navigations manually.
 
 ## Turbo Frame Gotchas
 
@@ -350,19 +282,15 @@ export default class extends Controller {
 ## ActionCable / WebSocket Changes
 
 ### Dedicated WSS Server → Puma-Integrated
-Rails 7 encourages running ActionCable within the Puma process instead of a separate server (like Faye):
+Rails 7 encourages running ActionCable within the Puma process instead of a separate server:
 
 ```ruby
-# Before (Rails 6.1 — separate Faye WebSocket server)
-# faye.ru file with dedicated WS process
+# Before (Rails 6.1 — separate WebSocket server)
 config.action_cable.url = "wss://example.com/cable"
 
 # After (Rails 7 — integrated into Puma)
-# faye.ru deleted
 config.action_cable.url = "ws://rails01/cable"
 ```
-
-The `faye.ru` (37 lines) was completely removed.
 
 ### ActionCable Channel Import Path
 ```javascript
@@ -374,82 +302,6 @@ import consumer from "channels/consumer"
 // But the consumer itself now imports from:
 import { createConsumer } from "@rails/actioncable"
 ```
-
-## Ruby 3.1 Breaking Changes (Often Done Simultaneously)
-
-### Psych 4.0 / YAML.load Safety
-Ruby 3.1 changed `YAML.load` to use safe-loading by default. Code deserializing Ruby objects from YAML breaks with `Psych::DisallowedClass`:
-
-```ruby
-# Before (unsafe — now raises Psych::DisallowedClass)
-YAML.load(redis_data)
-
-# After — explicitly permit classes
-YAML.load(redis_data, permitted_classes: [GlobalID, URI::GID])
-
-# Or use YAML.unsafe_load if you trust the source (not recommended)
-```
-
-**Detection**: Any code storing Ruby objects (GlobalID, Time, Date, custom classes) in YAML — especially in Redis, cache stores, or serialized columns.
-
-### Stdlib Gems Removal
-Ruby 3.1 removed several gems from the default bundle. The `mail` gem (used by ActionMailer) depends on all three:
-
-```ruby
-# Gemfile additions required
-gem 'net-smtp', require: false
-gem 'net-pop',  require: false
-gem 'net-imap', require: false
-```
-
-Without these, `bundle exec` may work but email sending fails at runtime with `LoadError`.
-
-## Security Fixes (Commonly Surfaced by Brakeman)
-
-### Kernel#open → URI.open
-```ruby
-# Before (Brakeman: remote code execution risk)
-data = open(url)
-
-# After
-data = URI.open(url)
-```
-
-In Ruby 3+, `Kernel#open` with a URL string starting with `|` can execute arbitrary commands.
-
-### String Interpolation in SQL
-```ruby
-# Before (SQL injection)
-where("title like '%#{set_no}%'")
-where("gtin::bigint > #{gtin}")
-
-# After (parameterized)
-where("title like ?", "%#{set_no}%")
-where("gtin::bigint > ?", gtin)
-```
-
-### Unsafe Redirects
-```ruby
-# Before (open redirect)
-redirect_to @price.url
-
-# After (validates URL structure)
-redirect_to URI.parse(@price.url).to_s
-```
-
-**Gotcha**: Don't apply `URI.parse` blindly — if the method returns an ActiveRecord object (not a URL string), `URI.parse` will raise an error. One production app had to roll back this fix.
-
-### constantize on User Input
-```ruby
-# Before (remote code execution risk)
-kind = params[:taggable_type]
-object = kind.constantize.find(params[:taggable_id])
-
-# After (safe GlobalID resolution)
-object = GlobalID::Locator.locate(params[:taggable])
-```
-
-Views pass `model.to_global_id` instead of separate type/id hidden fields.
 
 ## Cookie Serializer Migration
 
@@ -466,65 +318,6 @@ Rails.application.config.action_dispatch.cookies_serializer = :json
 ```
 
 **Gotcha**: One production app switched directly to `:json` and had to switch back to `:hybrid` two days later because existing user cookies were Marshal-serialized. The `:hybrid` serializer handles the transition gracefully.
-
-## Faraday 2.0 Breaking Changes
-
-Faraday's authentication API had a multi-step deprecation that is easy to get wrong:
-
-```ruby
-# Old API (Faraday 1.x — removed in 2.0)
-conn.basic_auth(user, pass)
-
-# Intermediate API (deprecated in 2.0)
-conn.request(:basic_auth, user, pass)
-
-# Correct API (Faraday 2.x)
-conn.request(:authorization, :basic, user, pass)
-```
-
-**Real-world**: One production app took three consecutive commits to get this right, with multiple commented-out attempts visible in the code.
-
-## Rack::Attack API Change
-
-```ruby
-# Before (Rack::Attack 5.x)
-Rack::Attack.throttled_response = lambda { |env| ... }
-
-# After (Rack::Attack 6.x)
-Rack::Attack.throttled_responder = lambda { |request| ... }
-```
-
-Note the method name change AND the block parameter change (from `env` to `request`).
-
-## Kredis Adoption (Optional but Common)
-
-Rails 7 introduced Kredis for typed Redis data structures. Migration from manual Redis/cache calls:
-
-```ruby
-# Before: Manual cache-based state management
-def price_lookup_state=(value)
-  Rails.cache.write("p_#{id}_#{region_id}", value, expires_in: 5.minutes)
-end
-def price_lookup_state
-  Rails.cache.read("p_#{id}_#{region_id}") || READY
-end
-
-# After: Kredis enum
-kredis_enum :price_lookup_state, values: %w[ready queued processing], default: "ready"
-```
-
-Usage changes from constants to enum methods:
-```ruby
-# Before
-product.price_lookup_state == READY
-product.price_lookup_state = PROCESSING
-
-# After
-product.price_lookup_state.ready?
-product.price_lookup_state.value = 'processing'
-```
-
-**Gotcha**: Kredis `unique_list` behaves differently from manual array manipulation. One production app tried to migrate a History model to Kredis and had to roll back because the API didn't match the existing behavior.
 
 ## Asset Pipeline Changes
 
@@ -600,27 +393,10 @@ config.hosts << "myapp.localhost" << "api.myapp.localhost"
 
 - **String-based event name search is insufficient**: `grep -r "turbolinks"` won't catch all event names if they've been partially updated. Search for both `turbolinks` AND `turbo` to find half-migrated references
 
-- **Matomo event name was missed on first pass**: The Turbolinks→Turbo event name change was caught in most files but missed in the Matomo tracking script. A dedicated grep for each analytics provider is essential
-
 - **`submit_tag` doesn't work well with Turbo**: Turbo expects `f.button` or `button_tag` with `form_with`. The `submit_tag` helper can cause double-submission issues with Turbo's form interception
 
 - **Font paths break with Sprockets changes**: When Sprockets configuration changes, fonts may need to be moved to `app/assets/fonts/` and explicitly linked in the manifest. One app had ~15 commits just fixing font and favicon paths
 
-- **Redis.current removal**: Redis 4.6+ deprecated `Redis.current`. Replace with connection pools:
-  ```ruby
-  # Before
-  Redis.current.get(key)
-
-  # After
-  $redis.with { |conn| conn.get(key) }
-  ```
-
 - **ActionCable requires explicit allowed_request_origins**: In production, ActionCable now requires `config.action_cable.allowed_request_origins` to include all domains that will connect via WebSockets
 
 - **CSS compression must be disabled carefully**: If you remove Terser/Sass compressors, ensure your CSS pipeline doesn't rely on SCSS compilation. One app had to set `config.assets.css_compressor = nil` explicitly to avoid errors
-
-- **Multiple simultaneous upgrades compound complexity**: Upgrading Rails 6.1→7.0 while also upgrading Ruby 2.7→3.1, Faraday 1.x→2.x, and Psych 3.x→4.x simultaneously creates a combinatorial explosion of breaking changes. Consider staging these upgrades
-
-- **Kredis rollback risk**: Kredis enums and unique_lists are not drop-in replacements for hand-rolled Redis patterns. Test thoroughly before deploying, and keep the old code paths available for quick revert
-
-- **The Dalli gem (Memcached) may be removable**: If migrating caching to Redis during the upgrade, remember to also remove the `dalli` gem from the Gemfile. One app forgot this, leaving a dead dependency

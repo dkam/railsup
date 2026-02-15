@@ -23,10 +23,6 @@ grep -rn 'cache_classes' config/environments/
 # cache_classes = true means enable_reloading = false
 ```
 
-## Gem Compatibility
-
-- **Mongoid**: Check github.com/mongodb/mongoid for Rails 7.1 compatibility before upgrading
-
 ## Edge Cases
 
 - **SQLite database not found** after upgrade
@@ -34,10 +30,6 @@ grep -rn 'cache_classes' config/environments/
   Diagnosis: SQLite files not moved from `db/` to `storage/`
   Fix: `mkdir -p storage && mv db/*.sqlite3 storage/`
   Also: Verify `.gitignore` includes `storage/` not just `db/*.sqlite3`
-
-- **Custom SSL middleware detected**
-  Symptom: `config.middleware.use SomeSSLMiddleware`
-  Action: Review for Kamal compatibility if using Kamal deployment
 
 ## Serialize API Change (Deprecation)
 
@@ -68,37 +60,6 @@ config.cache_store = :redis_cache_store, {
 ```
 
 One production app used versioned namespaces (`70_`, `711_`, `712_`) to ensure clean cache invalidation after each upgrade.
-
-## Early Patch Version Caution
-
-One production app immediately upgraded to Rails 7.1.2 on release day, then had to **roll back to 7.1.1** two days later due to issues. The upgrade was re-attempted two weeks later successfully.
-
-**Lesson**: Wait a few days after patch releases before deploying to production. Let the community shake out regressions first.
-
-## SolidCache Initial Adoption
-
-If adopting SolidCache during the 7.0→7.1 upgrade:
-
-### Schema migration is multi-step
-SolidCache 0.4.0 requires a 3-step migration:
-1. Add `key_hash` and `byte_size` columns with NOT NULL constraints
-2. Add indexes: `key_hash` (unique), `[key_hash, byte_size]`, `byte_size`
-3. Remove the old binary `key` unique index
-
-### Configuration evolved significantly
-```ruby
-# Initial (SolidCache 0.2) — entry-based limits
-config.solid_cache.max_entries = 1_000_000
-config.solid_cache.max_age = 3.days
-
-# Later (SolidCache 0.4+) — size-based limits (preferred)
-config.solid_cache.max_size = 5.gigabytes
-config.solid_cache.size_estimate_samples = 1000
-config.solid_cache.expiry_batch_size = 1_000  # Faster eviction
-```
-
-### Expect iteration
-One production app went through multiple rapid back-and-forth switches between Redis and SolidCache within hours during initial adoption. Have your previous cache store ready as a quick fallback.
 
 ## Hash Digest Algorithm Change: SHA1 → SHA256
 
@@ -193,5 +154,3 @@ Rails.cache.fetch("test") { "value" }
 
 - **`force_ssl` default changed**: Rails 7.1 changes SSL defaults for Kamal compatibility. If not using Kamal, verify your SSL config is still enforced
 - **`cache_classes` → `enable_reloading`**: The boolean is **inverted** — `cache_classes = false` becomes `enable_reloading = true`
-- **Meili/search indexing logging**: If using Meilisearch or similar, check that batch logging statements aren't inadvertently placed inside loops after upgrade-related refactoring
-- **SolidCache `key_hash_stage` config**: This config option was added in 0.4.0 then deprecated shortly after. If you added it during migration, remove it once migration is complete

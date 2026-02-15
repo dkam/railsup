@@ -2,31 +2,10 @@
 
 ## Detection Commands
 
-### SSL configuration detection
-```bash
-# Rails 8.1 comments out force_ssl and assume_ssl by default for Kamal compatibility
-grep -rn 'force_ssl\s*=\s*true' config/environments/production.rb | grep -v "assume_ssl"
-# If using Kamal: expect commented out settings
-# If NOT using Kamal: expect both present and true
-```
-
-### bundler-audit integration
-```bash
-# Rails 8.1 requires bundler-audit gem
-grep -rn "bundle-audit|bundler-audit" Gemfile .github/
-```
-
 ### load_defaults version detection
 ```bash
 # Check current load_defaults — should be bumped to 8.1
 grep -rn "load_defaults" config/application.rb
-```
-
-### benchmark gem detection
-```bash
-# Rails 8.1 removed benchmark from activesupport's dependencies
-# If your app uses benchmark directly, you need to add it to Gemfile
-grep -rn "require.*benchmark\|Benchmark\." app/ lib/ test/
 ```
 
 ### STDOUT vs $stdout detection
@@ -40,53 +19,6 @@ grep -rn "STDOUT" config/environments/
 # Rails 8.1 uses shorthand syntax for cache_store config
 # But custom config attributes may NOT work with shorthand
 grep -rn "cache_store.*=" config/environments/
-```
-
-## Gem Compatibility Notes
-
-- **Sidekiq adapter removed**: Rails 8.1 removes built-in Sidekiq adapter from ActiveJob
-  - Requires: Sidekiq gem >= 7.3.3
-  - Detection: `grep -rn "queue_adapter.*:sidekiq|queue_adapter.*:sucker_punch" config/`
-  - Update: Add `gem "sidekiq"` to Gemfile, require: false
-  - Remove: Any direct `Sidekiq.new` or `Sidekiq.sucker_punch` references
-
-- **Azure ActiveStorage service removed**: Azure integration completely removed
-  - Detection: `grep -rn "service.*azure|azure_storage" config/storage.yml`
-  - Action: Switch to S3, GCS, or disk storage
-
-- **bundler-audit gem required**: Security scanning now integrated
-  - Add to Gemfile: `gem "bundler-audit", require: false`
-  - Create: `config/bundler-audit.yml`
-  - Make executable: `chmod +x bin/bundler-audit`
-
-- **benchmark gem now separate**: Rails 8.1 removed `benchmark` from ActiveSupport's dependencies
-  - If your app uses `Benchmark.measure` or similar, add `gem "benchmark"` to Gemfile
-  - This is easy to miss — the error only shows at runtime, not during `bundle install`
-
-## File Existence Checks
-
-### bin/bundler-audit
-```bash
-# Should exist after 8.1 upgrade
-[ -e bin/bundler-audit ]
-```
-
-### config/bundler-audit.yml
-```bash
-# Should exist after 8.1 upgrade
-[ -e config/bundler-audit.yml ]
-```
-
-### bin/ci (new in 8.1)
-```bash
-# New executable in 8.1
-[ -e bin/ci ]
-```
-
-### config/ci.rb (new in 8.1)
-```bash
-# New config file in 8.1
-[ -e config/ci.rb ]
 ```
 
 ## config.load_defaults Jump
@@ -158,34 +90,12 @@ Rails 8.1 adds support for `WEB_CONCURRENCY=auto` which automatically starts one
 # for each available processor.
 ```
 
-### Solid Queue plugin re-enabled
-The default `config/puma.rb` uncomments the Solid Queue plugin:
-
-```ruby
-# Before (8.0) — commented out
-# plugin :solid_queue if ENV["SOLID_QUEUE_IN_PUMA"]
-
-# After (8.1) — active
-plugin :solid_queue if ENV["SOLID_QUEUE_IN_PUMA"]
-```
-
-If you removed Solid Queue, make sure this line stays commented out or removed.
-
 ## Development Config Simplification
 
 Rails 8.1 further simplifies `config/environments/development.rb`:
 
 ### Changes
 ```ruby
-# REMOVED — Bullet gem config (move to initializer if needed)
-config.after_initialize do
-  Bullet.enable = true
-  # ...
-end
-
-# REMOVED — barcode_scanner_enabled (app-specific config)
-config.barcode_scanner_enabled = true
-
 # REMOVED — assets.debug (no longer needed with Propshaft)
 config.assets.debug = true
 
@@ -197,10 +107,6 @@ config.action_dispatch.trusted_proxies = [
 ]
 # Replaced with:
 config.action_dispatch.trusted_proxies = %w[127.0.0.1 ::1].map { |proxy| IPAddr.new(proxy) }
-
-# REMOVED — explicit hosts entries (use Rails default)
-config.hosts << "api.myapp.localhost"
-# ...
 
 # CHANGED — ActionCable disable_request_forgery_protection now commented out by default
 # config.action_cable.disable_request_forgery_protection = true
@@ -231,23 +137,7 @@ Rails 8.1 completely rewrites `public/422.html` and updates `public/406-unsuppor
 - SVG error codes use named IDs (`#error-id`, `#error-description`) for dark mode color switching
 - Consider regenerating from the Rails template: `bin/rails app:update`
 
-## Systemd Service Files
-
-If using systemd with Puma, the `ExecReload` command for phased restarts may need updating:
-
-```ini
-# Before — may fail silently
-ExecReload=/path/to/pumactl -S /path/to/pumactl.sock phased-restart
-
-# After — use su for proper environment, or add -C config path
-ExecReload=/bin/su - appuser -c '/path/to/pumactl -S /path/to/pumactl.sock phased-restart'
-```
-
 ## Subtle Gotchas
-
-- **Kamal SSL settings commented**: If deploying to Kamal, SSL defaults may be commented out
-  - Action: Review `config/environments/production.rb` for `# config.force_ssl = true` and `# config.assume_ssl = true`
-  - Action: Uncomment them if you want SSL enforcement
 
 - **pool renamed to max_connections**: Database configuration syntax changed
   - Old: `pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>`
@@ -274,21 +164,6 @@ ExecReload=/bin/su - appuser -c '/path/to/pumactl -S /path/to/pumactl.sock phase
   - New: `add_column :products, :price, :decimal + add_check_constraint :products, "price >= 0"`
   - Detection: `grep -rn "unsigned_float\|unsigned_decimal" db/migrate/`
 
-- **Docker/CI QEMU compatibility**: Bootsnap parallel compilation must be disabled for QEMU builds
-  - Disable: `BOOTSNAP_PARALLEL_COMPILATION=false` in Dockerfile
-  - New: Jemalloc loaded via `LD_PRELOAD` instead of entrypoint script
-  - File ownership: `COPY --chown=rails:rails` instead of after (`--chown=rails:rails` flag on `COPY`)
-  - Impact: Docker builds will fail without this setting
-
-- **Valkey replaces Redis in CI**: GitHub Actions service image changed
-  - Old: `redis` image
-  - New: `valkey/valkey:8`
-  - Update: `.github/workflows/ci.yml`
-
 - **`require File.expand_path("../boot", __FILE__)` removed**: Rails 8.1 only uses `require_relative "boot"` in `config/application.rb`. If you had both (common after previous upgrades), remove the `File.expand_path` version
 
 - **`config.assets.quiet` returned**: This setting was removed in Rails 8.0 but is back in 8.1 for development. If you removed it during the 8.0 upgrade, add it back
-
-- **connection_pool pinning**: Rails 8.1 may require `connection_pool ~> 2.5`. Check your Gemfile.lock for compatibility if you have gems that depend on older versions
-
-- **Nokogiri native gems**: Rails 8.1 ships with native platform-specific Nokogiri gems (e.g., `nokogiri-arm64-darwin`) instead of compiling from source. This removes the `mini_portile2` dependency and speeds up installs, but may affect Dockerfile build strategies that expect source compilation

@@ -28,11 +28,6 @@ grep -rn "form_for" app/views/
 grep -rn '#edit_\|#new_' app/views/ app/assets/javascripts/
 ```
 
-### therubyracer gem (replaced by mini_racer)
-```bash
-grep -rn "therubyracer\|mini_racer" Gemfile
-```
-
 ### Class names incompatible with Zeitwerk conventions
 ```bash
 # Files named foo_bar.rb must define FooBar, not FOOBar or FooBAR
@@ -52,41 +47,11 @@ grep -rn "rack.attack\|rack_attack" config/initializers/
 grep -rn "ActionController::TestCase" test/
 ```
 
-### Beaneater::Pool usage
-```bash
-# Beaneater 1.0 removed Pool class
-grep -rn "Beaneater::Pool" config/ app/ lib/
-```
-
-### GeoIP gem (replaced by maxminddb/geocoder)
-```bash
-grep -rn "GeoIP\|geoip" Gemfile app/ lib/
-```
-
 ### config.hosts DNS rebinding protection
 ```bash
 # Rails 6 blocks requests to unknown hosts in development
 grep -rn "config.hosts" config/environments/development.rb
 ```
-
-## The Upgrade Timeline (Real-World)
-
-One production app took approximately **7 months** of active work (Jan 22 – Aug 23, 2019), running a long-lived `rails6` feature branch with ~20 merge commits keeping it synchronized with master. 866 total commits between the start and end tags, with 81 direct commits on the upgrade branch.
-
-### Version Path
-| Version | Date | Notes |
-|---------|------|-------|
-| 5.2.3 → 6.0.0.beta3 | 2019-01-22 | Initial Gemfile update, config changes |
-| 6.0.0.beta3 → 6.0.0.rc1 | 2019-04-30 | Zeitwerk updated (1.3.4 → 2.1.5) |
-| 6.0.0.rc1 → 6.0.0.rc2 | 2019-07-31 | Stabilization |
-| 6.0.0.rc2 → 6.0.0 | 2019-08-18 | GA release, removed deprecated configs |
-| — | 2019-08-23 | **MERGE: rails6 branch merged into master** |
-
-**Ruby**: Upgraded from 2.6.2 to 2.6.3 during the same period.
-
-**Key strategy**: The `responders` gem removal was done as a **separate preparatory branch** (`deprecate_responders_gem`) merged into `rails6` first. This isolated one of the biggest API changes from the Rails version upgrade itself.
-
-**Branch strategy**: Long-lived `rails6` branch with regular merges from master. A parallel `turbolinks` branch was also maintained and eventually combined via an `r6turbo` integration branch before the final merge to master.
 
 ## Responders Gem Removal (CRITICAL)
 
@@ -115,8 +80,6 @@ class Api::V1::ListsController < Api::V1::BaseController
 end
 ```
 
-**Affected 9 API v1 controllers** in one production app: lists, parts, prices, products, series, shops, users, widgets, works.
-
 **Watch for edge cases:**
 ```ruby
 # respond_with wraps non-hash values differently than render json:
@@ -125,8 +88,6 @@ respond_with(product: product)
 # After:
 render json: { product: product }
 ```
-
-**Lesson**: Do this as a separate branch before the main upgrade. It's a mechanical change but touches many files, and mixing it with Rails version changes makes debugging harder.
 
 ## Cache Store: dalli_store → mem_cache_store
 
@@ -142,11 +103,9 @@ config.cache_store = :mem_cache_store, '127.0.0.1', { namespace: 'rails6', compr
 
 **Critical**: Change the cache namespace (e.g., `rails5` → `rails6`, `r52` → `r6`) to avoid stale cache data. The serialization format may differ between the two stores, and old cache entries will cause silent failures.
 
-**Post-merge cache debugging**: One production app had multiple cache-related fix commits after the merge ("Bug fix on caching", "Make the cache work", "Bug fix after merge"), suggesting the namespace change alone wasn't sufficient — check that all cache read/write paths work correctly.
-
 ## belongs_to Required by Default
 
-`config.load_defaults 6.0` enables `belongs_to_required_by_default = true`. This was a **multi-day fix sprint** (6 commits in a single day) in one production app.
+`config.load_defaults 6.0` enables `belongs_to_required_by_default = true`.
 
 **Detection:**
 ```bash
@@ -239,8 +198,6 @@ end
 
 **Change 2: Notification name** — changed from string `'rack.attack'` to a different format, requiring a regex subscriber (`/rack_attack/`).
 
-One production app committed two fixes 7 minutes apart for these two issues.
-
 ## Class Naming for Zeitwerk Compatibility
 
 Rails 6 introduced the Zeitwerk autoloader. Even without explicitly enabling it (`config.autoloader = :zeitwerk`), the stricter naming conventions started being enforced. File names must match class names using Rails' `String#camelize` rules.
@@ -279,82 +236,6 @@ grep -rn "class [A-Z][A-Z]" app/ lib/ | grep -v "# "
 ```
 
 **Lesson**: These failures can happen well after the initial upgrade — a class that's autoloaded via a different path may work initially, then break when loaded directly by Zeitwerk.
-
-## therubyracer → mini_racer
-
-The `therubyracer` gem (wrapping V8 3.x) was end-of-life. Replace with `mini_racer` (modern V8):
-
-```ruby
-# Before
-group :production do
-  gem 'therubyracer'
-end
-
-# After (available in all environments)
-gem 'mini_racer'
-```
-
-`mini_racer` is a drop-in replacement for ExecJS usage. No code changes required beyond the Gemfile.
-
-## Beaneater 0.3 → 1.0 (API Break)
-
-If using Beanstalkd, the `beaneater` gem's 1.0 release removed `Beaneater::Pool`:
-
-```ruby
-# Before
-Beaneater::Pool.new(["#{bs_host}:#{bs_port}"])
-
-# After
-Beaneater.new(["#{bs_host}:#{bs_port}"])
-```
-
-**Also consider**: Remove eager connection at boot time. One production app had a `begin/rescue Errno::ECONNREFUSED` block in the initializer that was no longer needed.
-
-## Bourbon SCSS Framework (4.x → 5.x/6.x)
-
-This was a **multi-day struggle** — first attempted, immediately reverted, then re-done the next day with proper fixes.
-
-**Breaking changes:**
-```scss
-// font-face mixin API changed completely
-// Before (Bourbon 4)
-@include font-face(OpenSansPro, 'OpenSans/opensans-regular-webfont', normal, $asset-pipeline: true);
-
-// After (Bourbon 5+)
-@include font-face('OpenSansPro', 'OpenSans/opensans-regular-webfont') { font-style: normal }
-
-// placeholder and hide-text mixins were removed
-// Before
-@include placeholder {
-  @include hide-text();
-}
-// After — must implement manually or remove
-```
-
-**Lesson**: Bourbon 4→5 is a near-complete API rewrite. If your SCSS is heavily Bourbon-dependent, consider migrating away from Bourbon mixins to standard CSS (many Bourbon mixins were for vendor prefixes that are no longer needed with Autoprefixer).
-
-## GeoIP → Geocoder/MaxMindDB
-
-The `geoip` gem (using legacy `.dat` files) was replaced with `maxminddb` + `geocoder` (using `.mmdb` files):
-
-```ruby
-# Before
-GeoIP.new('/usr/share/GeoIP/GeoIP.dat').country(ip_address).country_code3
-
-# After
-Geocoder.search(ip_address).first&.country_code
-```
-
-**Critical**: The return value changes from **ISO 3-letter** country codes to **ISO 2-letter** codes. All code that compares or stores country codes needs updating.
-
-**New initializer:**
-```ruby
-# config/initializers/geocoder.rb
-Geocoder.configure(
-  ip_lookup: :geoip2,
-  geoip2: { file: Rails.root.join("lib", "GeoLite2-City.mmdb") }
-)
-```
 
 ## CSRF and CSP Meta Tags
 
@@ -473,33 +354,6 @@ end
 
 **Lesson**: Initializer-based monkeypatching of Rails classes is fragile and often breaks during upgrades. Extract to modules included in the proper place.
 
-## Migration File Cleanup
-
-This is a good time to purge old migration files. One production app deleted **317 migration files** spanning 10+ years (2008–2017) and replaced them with a single `db/structure.sql`. This:
-- Reduces `db:migrate` time in CI
-- Removes dead code that can confuse new developers
-- Eliminates migration compatibility issues with old Rails versions
-
-```bash
-# Before cleanup: verify all migrations have been run
-bundle exec rails db:migrate:status | grep "down"
-
-# If all are "up", safe to delete and rely on structure.sql/schema.rb
-```
-
-## What Was NOT Adopted (Rails 6 Optional Features)
-
-Not all Rails 6 features need to be adopted during the upgrade. One production app explicitly skipped:
-
-- **Webpacker**: Continued with Sprockets (Webpacker was later removed from Rails anyway)
-- **Action Cable**: Not needed for the application
-- **Active Storage**: Continued with existing file handling
-- **Multi-database**: Stayed with single database config
-- **Credentials**: Continued with initializer-based configuration (migrated later)
-- **Zeitwerk explicit mode**: Relied on class name fixes rather than enabling `config.autoloader = :zeitwerk`
-
-**Lesson**: Upgrade the framework first, adopt new features later in separate PRs. Trying to adopt Webpacker/Zeitwerk/credentials simultaneously with the version upgrade multiplies debugging complexity.
-
 ## Subtle Gotchas
 
 - **`finalize_compiled_template_methods` whiplash**: This config was added in Rails 6 betas (`config.action_view.finalize_compiled_template_methods = false`) then **deprecated in the final release**. If you followed beta upgrade guides, you'll need to remove it
@@ -511,11 +365,3 @@ Not all Rails 6 features need to be adopted during the upgrade. One production a
 - **Test sign_in helpers may need REMOTE_ADDR**: If your authentication checks IP addresses (for rate limiting, logging, or Rack::Attack), test helpers need to include the header: `headers: { 'REMOTE_ADDR' => '1.2.3.4' }`
 
 - **Enum naming conflicts**: Rails 6 is stricter about enum method name collisions. If you have enums like `condition: { new: 0, used: 1 }`, the `new` value conflicts with `Model.new`. Use prefixed names: `condition: { cond_new: 0, cond_used: 1 }`
-
-- **Bourbon revert pattern**: If a gem upgrade causes cascading SCSS failures, revert immediately and fix in isolation rather than trying to debug SCSS issues alongside Rails upgrade issues
-
-- **`open-uri-cached` compatibility**: This gem may conflict with Ruby 2.7+'s `URI.open` changes. Consider removing it if you're also upgrading Ruby
-
-- **Amazon/external API migrations**: Don't bundle external API migrations (e.g., Amazon PA-API 4→5) with the Rails upgrade. They're complex enough to warrant their own branch
-
-- **Post-merge cache failures**: Even after a successful merge, expect 2-3 days of cache-related bug fixes. The cache store change, namespace change, and serialization differences compound in production

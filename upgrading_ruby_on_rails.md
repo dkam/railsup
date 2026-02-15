@@ -41,6 +41,17 @@ The process should go as follows:
 
 Repeat this process until you reach your target Rails version.
 
+### Use a Separate Branch
+
+When upgrading Rails, it's strongly recommended to create a dedicated upgrade branch rather than working directly on your main branch. This allows you to:
+
+- Keep your main branch stable while working on the upgrade
+- Merge in updates from main periodically to avoid drift
+- Isolate upgrade changes from feature work
+- Easily revert or restart if needed
+
+For major version upgrades (e.g., 5.2 → 6.0), consider tracking beta/RC releases on your upgrade branch to catch issues early.
+
 #### Moving between versions
 
 To move between versions:

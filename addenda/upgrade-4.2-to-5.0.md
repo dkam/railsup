@@ -89,13 +89,9 @@ One production app took approximately **8 months** from initial beta testing to 
 | 5.0.2 | 2017-03-15 | Patch update |
 | 5.0.3 | 2017-05-13 | Patch update |
 
-**Key strategy**: The `rails5` branch started on beta1 (released only 12 days earlier) and tracked every beta/RC release. Master continued receiving feature work with periodic merges into the upgrade branch. The final landing was a dense 3-day sprint (Aug 16–18) with ~30 commits fixing deprecation warnings, updating tests, and resolving last-minute issues.
-
-**Branch complexity**: The rails5 branch was interleaved with a separate `pg` (MySQL→PostgreSQL) migration. Both eventually merged, making it difficult to separate upgrade changes from database migration work retroactively.
-
 ## before_filter → before_action (Most Widespread)
 
-Rails 5 renamed all callback filter methods. This was the single most widespread change, touching **15 controller files** in a single commit.
+Rails 5 renamed all callback filter methods. This is typically one of the most widespread changes in the upgrade.
 
 ```ruby
 # Before (Rails 4.2)
@@ -113,19 +109,6 @@ skip_before_action :verify_authenticity_token
 ```bash
 grep -rn "before_filter\|after_filter\|around_filter" app/controllers/
 ```
-
-**Affected files in one production app (single commit):**
-- `app/controllers/application_controller.rb`
-- `app/controllers/books_controller.rb`
-- `app/controllers/filters_controller.rb`
-- `app/controllers/lists_controller.rb`
-- `app/controllers/parts_controller.rb`
-- `app/controllers/series_controller.rb`
-- `app/controllers/shops_controller.rb`
-- `app/controllers/works_controller.rb`
-- 7 API controllers (`api/v1/*.rb`)
-
-**`after_filter` → `after_action`** was caught in a separate commit across 4 controllers (`works_controller.rb`, `products_controller.rb`, `series_controller.rb`, `parts_controller.rb`).
 
 **Lesson**: This is a mechanical find-and-replace but easy to miss in less-visited controllers. Do it in one sweep.
 
