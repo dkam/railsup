@@ -4,7 +4,7 @@ A Claude Code skill for upgrading Ruby on Rails applications.
 
 ## Acknowledgments
 
-This skill is inspired by [rails-upgrade-skill](https://github.com/maquina-app/rails-upgrade-skill) by Mario Alberto Chávez Cárdenas. His original work has been merged into the addenda.
+This skill is inspired by [rails-upgrade-skill](https://github.com/maquina-app/rails-upgrade-skill) by Mario Alberto Chávez Cárdenas. His original work has been incorporated into the addenda.
 
 ## Contributing
 
