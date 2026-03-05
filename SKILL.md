@@ -20,6 +20,7 @@ When you ask about upgrading Rails, this skill:
 3. **Generates** reports based on your actual code (not generic examples)
 4. **Provides** step-by-step migration guidance
 5. **Offers** to apply fixes directly using Edit tool
+6. **Updates documentation** — Scans CLAUDE.md, README, CONTRIBUTING.md, Dockerfile, docker-compose.yml, and docs/ for references to the old Rails version and updates them
 
 ## Core Workflow
 
@@ -32,33 +33,8 @@ Claude: Reads addendum for edge cases (addenda/upgrade-7.0-to-7.1.md)
 Claude: Scans codebase using detection commands
 Claude: Parses findings, generates report
 Claude: Offers to apply fixes via Edit tool
-Claude: Checks documentation for outdated version references (see below)
+Claude: Updates documentation referencing the old Rails version
 ```
-
-## Documentation Version Check
-
-After completing each upgrade hop, scan project documentation for references to the old Rails version that should be updated. Check these files if they exist:
-
-- `CLAUDE.md` / `.claude/CLAUDE.md`
-- `README.md` / `README.rdoc` / `README`
-- `CONTRIBUTING.md`
-- `CHANGELOG.md`
-- `docs/**/*.md`
-- `.github/**/*.md` (PR templates, issue templates, etc.)
-- `Dockerfile`, `docker-compose.yml` (Ruby/Rails version references)
-- `.ruby-version`, `.tool-versions`
-
-```bash
-# Detection: find docs referencing the old Rails version
-grep -rn "Rails [0-9]" README* CLAUDE* CONTRIBUTING* CHANGELOG* docs/ .github/ Dockerfile docker-compose* .ruby-version .tool-versions 2>/dev/null
-```
-
-Report any outdated references and offer to update them. Common patterns:
-- "This app runs on Rails X.Y" → update to new version
-- "Requires Rails >= X.Y" → update minimum version
-- Version badges in README
-- CI/CD configuration referencing specific Rails versions
-- Dockerfile `ARG` or `ENV` values for Rails version
 
 ## Rules
 
